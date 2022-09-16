@@ -1,8 +1,13 @@
-from enum import auto
+import enum
+from optparse import Values
 import pyglet
 from pyglet.libs.win32 import constants
+
+# import json # need to learn to use this for saving and loading to files
+from random import choice
 import PySimpleGUI as sg
 
+# Styling for the window
 constants.COINIT_MULTITHREADED = 0x2  # 0x2 = COINIT_APARTMENTTHREADED
 
 pyglet.font.add_file(r"./clear-sans-main/TTF/ClearSans-Regular.ttf")
@@ -10,6 +15,9 @@ pyglet.font.add_file(r"./clear-sans-main/TTF/ClearSans-Regular.ttf")
 sg.theme("Default1")
 gray = "#818384"
 darkGray = "#1f1f1f"
+notInWord = "#3a3a3c"
+green = "#538d4e"
+yellow = "#b59f3b"
 
 # -----------------------------------------------------------
 
@@ -75,8 +83,30 @@ def updateInput(actualFocus, event, values, guess):
 
     return (guess, focus)
 
-# all the code of the layout and the game logic is in here
-def main():
+def getColors(guess, gameWord, letterCounts, wordSet):
+    colors = ["", "", "", "", ""]
+    countCopy = letterCounts.copy()
+    copyGuess = guess
+    for i, c in enumerate(guess): # Color the green
+        if c == gameWord[i]:
+            colors[i] = "G"
+            countCopy[c] -= 1
+            copyGuess = copyGuess[:i]+copyGuess[i+1:]
+    a = 0
+    for i, char in enumerate(guess): # then color the yellows
+        if char not in wordSet:
+            colors[i] = "N"
+        elif colors[i]=="":
+            if countCopy[char]==0:
+                continue
+            colors[i] = "Y"
+            countCopy[char] -= 1
+        
+
+    return colors
+
+# creates the window in which the game will be played
+def createGameWindow():
     # Setting up the layout:
 
     # text to be printed on screen as warnings
@@ -99,9 +129,9 @@ def main():
     # sort the window's contents in place
     layout = [
         [[getInputGUI((row, column)) for column in range(5)] for row in range(6)], # las casillas del input del juego
-        [sg.Text(background_color="#1f1f1f")],
+        [sg.Text(background_color=darkGray)],
         [warnings],
-        [sg.Text(background_color="#1f1f1f")],
+        [sg.Text(background_color=darkGray)],
         [getButtonGUI(char) for char in "QWERTYUIOP"],
         [getButtonGUI(char) for char in "ASDFGHJKL"],
         [lowerKeyboardRow],
@@ -114,26 +144,41 @@ def main():
         'Wordle clone',
         layout, 
         margins=(10, 10), 
-        background_color="#1f1f1f", 
+        background_color=darkGray, 
         element_justification="center", 
         finalize=True,)
+
+    return window
+
+# all the code of the layout and the game logic is in here
+def startGame():
+    window = createGameWindow()
+
+    # Setting up the backspace and enter keys 
     window.bind("<BackSpace>", "-BACKSPACE-")
     window.bind("<Return>", "-ENTER-")
 
     window["-PRINT-"].update(visible=False) # this is done to get the proportions right
     actualFocus = window[(0,0)] # actualFocus follows the input element that the user writes in
     actualFocus.update(disabled=False)
-    [window[(row, col)].set_cursor(cursor_color=darkGray) for col in range(5) for row in range(6)]
+    [window[(row, col)].set_cursor(cursor_color=darkGray) for col in range(5) for row in range(6)] # This is done so the keyboard cursor appears to be invisible
 
 # -----------------------------------------------------------
 
     # Variables for game logic
-    win = False
+    won = False
+    actualRow = 0
     wordList = []
     with open("words.txt", mode='rt') as f:
         wordList = f.readlines()
         for x in range(len(wordList)):
             wordList[x] = wordList[x].strip("\n").upper()
+    gameWord = choice(wordList)
+    print(gameWord)
+    letterCounts = {}
+    for char in gameWord:
+        letterCounts[char] = gameWord.count(char)
+    gameSet = set(gameWord)
     guess = ""
 
 # -----------------------------------------------------------
@@ -141,9 +186,8 @@ def main():
     # Display and interact with the Window using an Event Loop
     while True:
         event, values = window.read() # getting the events
-        print(event)
 
-        # See if user wants to quit or window was closed
+        # See if window was closed
         if event == sg.WINDOW_CLOSED:
             break
 
@@ -172,11 +216,12 @@ def main():
 
         # if it's possible to add a single letter to the row, we don't change the focus
         if len(guess) == 4:
-            if event == "-ENTER-":
-                window["-PRINT-"].update("Not enough letters", visible=True)
-
             guess, focus = updateInput(actualFocus, event, values, guess)
             actualFocus.update(disabled=True)
+
+            if event == "-ENTER-":
+                window["-PRINT-"].update("Not enough letters", visible=True)
+                actualFocus.update(disabled=False)
             continue
 
         # if it's not possible to add letters to row
@@ -191,12 +236,82 @@ def main():
             if event == "-ENTER-":
                 if guess not in wordList:
                     window["-PRINT-"].update("Word not in list", visible=True)
-                # else:
-                    # checkColor(guess)
+                else:
+                    colors = getColors(guess, gameWord, letterCounts, gameSet)
+                    for col, color in enumerate(colors):
+                        if color=="G":
+                            window[actualRow, col].update(disabled=False, # TODO, not working right now
+                        background_color=green)
+                        elif color=="Y":
+                            window[actualRow, col].update(disabled=False,
+                        background_color=yellow)
+                        elif color=="N":
+                            window[actualRow, col].update(disabled=False, background_color=notInWord)
+                    if guess == gameWord:
+                        won = True
+                        break
+                    if actualRow < 6:
+                        actualRow += 1
+                        guess = ""
+                        actualFocus = window[actualRow, 0]
+                        actualFocus.update(disabled=False)
+                        actualFocus.set_focus()
+                    elif actualRow == 6:
+                        break
             continue
-                
+    if event != sg.WINDOW_CLOSED:
+        if won:
+            window["-PRINT-"].update("You won!", visible=True)
+            sg.popup("Press ENTER to leave", auto_close=True, auto_close_duration=2)
+            while(True):
+                event, values = window.read() # getting the events
+                if event == "-ENTER-" or event == sg.WINDOW_CLOSED:
+                    break
+        else:
+            window["-PRINT-"].update("You lost :c", visible=True)
+
+    return (window, event)
+
+# control the state of the program before and after the game
+def main():
+    # try to load an unfinished game
+    # try:
+    #     with open("game_data/game_state.txt") as f:
+    #         
+    # except (FileNotFoundError, json.decoder.JSONDecodeError):
+
+        # load stats
+        # loadStats()
+        
+    window, event = startGame()
+        
+        # if event != sg.WINDOW_CLOSED:
+        #     # save stats
+        #     saveStats()
+
+        #     # show stats
+        #     statsWindow = showStats()
+
+        #     # popup after game asking to play again
+        #     playAgain = True
+        #     while(playAgain):
+        #         playAgainWindow, response = playAgain()
+        #         if response=="-YES-":
+        #             window.close()
+        #             statsWindow.close()
+        #             playAgainWindow.close()
+        #             window, event = startGame(wordList)
+        #             statsWindow = showStats()
+        #         else:
+        #             playAgain = False
+        # else: # if the window was closed, save the game state until the program is executed again
+        #     saveGameState()
+
     # Finish up by removing from the screen
     window.close()
+    # statsWindow.close()
+    # playAgainWindow.close()
+        
 
 if __name__ == "__main__":
     main()
