@@ -1,5 +1,3 @@
-import enum
-from optparse import Values
 import pyglet
 from pyglet.libs.win32 import constants
 
@@ -54,6 +52,31 @@ def getButtonGUI(char):
 
 # -----------------------------------------------------------
 
+def getTextGUI(char, color, row, column):
+    if color == "G":
+        color = green
+    elif color == "Y":
+        color = yellow
+    elif color == "N":
+        color = notInWord
+
+    textBox = sg.Text(
+        text=char,
+        key=f"T-({row},{column})",
+        size=(2,1),
+        border_width=0,
+        background_color=color,
+        pad=2,
+        text_color="white",
+        justification="centered",
+        font=("Clear sans", 35),
+        visible=False,
+    )
+
+    return textBox
+
+# -----------------------------------------------------------
+
 # Gets the next focus of an input and disables the previous input box
 def getNextFocus(actualFocus):
     actualFocus.update(disabled=True)
@@ -64,6 +87,7 @@ def getNextFocus(actualFocus):
 
 # -----------------------------------------------------------
 
+# checks the source of the input to handle it and adds it to the "guess"
 def updateInput(actualFocus, event, values, guess):
     focus = False
     # if the event is an input, it will also be a tuple
@@ -83,12 +107,18 @@ def updateInput(actualFocus, event, values, guess):
 
     return (guess, focus)
 
-def getColors(guess, gameWord, letterCounts, wordSet):
+# -----------------------------------------------------------
+
+# colors the guess on screen
+def colorGuess(guess, gameWord, letterCounts, wordSet, window, actualRow):
     colors = ["", "", "", "", ""]
     countCopy = letterCounts.copy()
     copyGuess = guess
+    colorLetter = {}
     for i, c in enumerate(guess): # Color the green
         if c == gameWord[i]:
+            window[c].update(button_color=green)
+            colorLetter[c]="G"
             colors[i] = "G"
             countCopy[c] -= 1
             copyGuess = copyGuess[:i]+copyGuess[i+1:]
@@ -96,14 +126,38 @@ def getColors(guess, gameWord, letterCounts, wordSet):
     for i, char in enumerate(guess): # then color the yellows
         if char not in wordSet:
             colors[i] = "N"
+            window[char].update(button_color=notInWord)
+            colorLetter[char]="N"
         elif colors[i]=="":
             if countCopy[char]==0:
+                colors[i] = "N"
                 continue
+            if colorLetter.get(char, "N")!="G":
+                window[char].update(button_color=yellow)
             colors[i] = "Y"
+            colorLetter[char]="Y"
             countCopy[char] -= 1
-        
 
-    return colors
+    for col, color in enumerate(colors): # paint the boxes
+        if color=="G":
+            window[f"T-({actualRow},{col})"].update(visible=True, background_color=green, value=guess[col])
+            window[(actualRow, col)].hide_row()
+        elif color=="Y":
+            window[f"T-({actualRow},{col})"].update(visible=True, background_color=yellow, value=guess[col])
+            window[(actualRow, col)].hide_row()
+        elif color=="N":
+            window[f"T-({actualRow},{col})"].update(visible=True, background_color=notInWord, value=guess[col])
+            window[(actualRow, col)].hide_row()
+    
+    """ setGuess = set(guess)
+    for char in "QWERTYUIOPASDFGHJKLZXCVBNM":
+        if char in setGuess:
+            
+     """
+
+    return window
+
+# -----------------------------------------------------------
 
 # creates the window in which the game will be played
 def createGameWindow():
@@ -125,9 +179,9 @@ def createGameWindow():
     deleteButton = sg.Button("Erase", key="-BACKSPACE-", size=(4,1), font=("Clear sans", 20), pad=2, button_color=("white", gray), enable_events=True)
     lowRow = [getButtonGUI(char) for char in "ZXCVBNM"]
     lowerKeyboardRow = [enterButton] + lowRow + [deleteButton]
-
-    # sort the window's contents in place
+    
     layout = [
+        [[getTextGUI("", "N", row, column) for column in range(5)] for row in range(6)], 
         [[getInputGUI((row, column)) for column in range(5)] for row in range(6)], # las casillas del input del juego
         [sg.Text(background_color=darkGray)],
         [warnings],
@@ -136,8 +190,6 @@ def createGameWindow():
         [getButtonGUI(char) for char in "ASDFGHJKL"],
         [lowerKeyboardRow],
     ]
-
-# -----------------------------------------------------------
 
     # Create the window
     window = sg.Window(
@@ -148,22 +200,23 @@ def createGameWindow():
         element_justification="center", 
         finalize=True,)
 
-    return window
-
-# all the code of the layout and the game logic is in here
-def startGame():
-    window = createGameWindow()
-
     # Setting up the backspace and enter keys 
     window.bind("<BackSpace>", "-BACKSPACE-")
     window.bind("<Return>", "-ENTER-")
 
     window["-PRINT-"].update(visible=False) # this is done to get the proportions right
-    actualFocus = window[(0,0)] # actualFocus follows the input element that the user writes in
-    actualFocus.update(disabled=False)
     [window[(row, col)].set_cursor(cursor_color=darkGray) for col in range(5) for row in range(6)] # This is done so the keyboard cursor appears to be invisible
 
+    return window
+
 # -----------------------------------------------------------
+
+# all the code of the layout and the game logic is in here
+def startGame():
+    window = createGameWindow()
+    
+    actualFocus = window[(0,0)] # actualFocus follows the input element that the user writes in
+    actualFocus.update(disabled=False)
 
     # Variables for game logic
     won = False
@@ -180,8 +233,6 @@ def startGame():
         letterCounts[char] = gameWord.count(char)
     gameSet = set(gameWord)
     guess = ""
-
-# -----------------------------------------------------------
 
     # Display and interact with the Window using an Event Loop
     while True:
@@ -227,7 +278,7 @@ def startGame():
         # if it's not possible to add letters to row
         if len(guess) == 5:
             # if event is a backspace, delete the character
-            if event == "-BACKSPACE-" and len(guess) > 0:
+            if event == "-BACKSPACE-":
                 actualFocus.update(disabled=False)
                 actualFocus.update(value="")
                 guess = guess[:-1]
@@ -237,26 +288,20 @@ def startGame():
                 if guess not in wordList:
                     window["-PRINT-"].update("Word not in list", visible=True)
                 else:
-                    colors = getColors(guess, gameWord, letterCounts, gameSet)
-                    for col, color in enumerate(colors):
-                        if color=="G":
-                            window[actualRow, col].update(disabled=False, # TODO, not working right now
-                        background_color=green)
-                        elif color=="Y":
-                            window[actualRow, col].update(disabled=False,
-                        background_color=yellow)
-                        elif color=="N":
-                            window[actualRow, col].update(disabled=False, background_color=notInWord)
-                    if guess == gameWord:
-                        won = True
-                        break
-                    if actualRow < 6:
+                    if actualRow < 5:
+                        window = colorGuess(guess, gameWord, letterCounts, gameSet, window, actualRow) # Get the colors of the word
+                        if guess == gameWord:
+                            won = True
+                            break
                         actualRow += 1
                         guess = ""
-                        actualFocus = window[actualRow, 0]
+                        actualFocus = window[(actualRow, 0)]
                         actualFocus.update(disabled=False)
                         actualFocus.set_focus()
-                    elif actualRow == 6:
+                    if actualRow == 5:
+                        window = colorGuess(guess, gameWord, letterCounts, gameSet, window, actualRow) # Get the colors of the word
+                        if guess == gameWord:
+                            won = True
                         break
             continue
     if event != sg.WINDOW_CLOSED:
@@ -269,8 +314,15 @@ def startGame():
                     break
         else:
             window["-PRINT-"].update("You lost :c", visible=True)
+            sg.popup("Press ENTER to leave", auto_close=True, auto_close_duration=2)
+            while(True):
+                event, values = window.read() # getting the events
+                if event == "-ENTER-" or event == sg.WINDOW_CLOSED:
+                    break
 
     return (window, event)
+
+# -----------------------------------------------------------
 
 # control the state of the program before and after the game
 def main():
