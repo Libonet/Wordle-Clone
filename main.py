@@ -26,7 +26,7 @@ def getInputGUI(coordinates):
         key=coordinates, # (row, column)
         size=(2,1),
         background_color=darkGray,
-        pad=2,
+        pad=(2,4),
         text_color="white",
         justification="centered",
         font=("Clear sans", 35),
@@ -64,9 +64,9 @@ def getTextGUI(char, color, row, column):
         text=char,
         key=f"T-({row},{column})",
         size=(2,1),
-        border_width=0,
+        border_width=3,
         background_color=color,
-        pad=2,
+        pad=(3, 2),
         text_color="white",
         justification="centered",
         font=("Clear sans", 35),
@@ -198,7 +198,9 @@ def createGameWindow():
         margins=(10, 10), 
         background_color=darkGray, 
         element_justification="center", 
-        finalize=True,)
+        finalize=True,
+        # size=(500,800),
+        )
 
     # Setting up the backspace and enter keys 
     window.bind("<BackSpace>", "-BACKSPACE-")
@@ -293,11 +295,12 @@ def startGame():
                         if guess == gameWord:
                             won = True
                             break
-                        actualRow += 1
                         guess = ""
+                        actualRow += 1
                         actualFocus = window[(actualRow, 0)]
                         actualFocus.update(disabled=False)
                         actualFocus.set_focus()
+                        continue
                     if actualRow == 5:
                         window = colorGuess(guess, gameWord, letterCounts, gameSet, window, actualRow) # Get the colors of the word
                         if guess == gameWord:
