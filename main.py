@@ -214,20 +214,14 @@ def createGameWindow():
 # -----------------------------------------------------------
 
 # all the code of the layout and the game logic is in here
-def startGame():
-    window = createGameWindow()
-    
+def startGame(window, wordList):
     actualFocus = window[(0,0)] # actualFocus follows the input element that the user writes in
     actualFocus.update(disabled=False)
 
     # Variables for game logic
-    won = False
+    won = None
     actualRow = 0
     wordList = []
-    with open("words.txt", mode='rt') as f:
-        wordList = f.readlines()
-        for x in range(len(wordList)):
-            wordList[x] = wordList[x].strip("\n").upper()
     gameWord = choice(wordList)
     print(gameWord)
     letterCounts = {}
@@ -315,7 +309,8 @@ def startGame():
                 event, values = window.read() # getting the events
                 if event == "-ENTER-" or event == sg.WINDOW_CLOSED:
                     break
-        else:
+        if won==None:
+            won=False
             window["-PRINT-"].update("You lost :c", visible=True)
             sg.popup("Press ENTER to leave", auto_close=True, auto_close_duration=2)
             while(True):
@@ -323,31 +318,41 @@ def startGame():
                 if event == "-ENTER-" or event == sg.WINDOW_CLOSED:
                     break
 
-    return (window, event)
+    return (window, event, won)
 
 # -----------------------------------------------------------
 
 # control the state of the program before and after the game
+# TODO: save and load stats, play again, and continue a previous game
 def main():
-    # try to load an unfinished game
+    # try to load an unfinished game # [ ]: load a previous unfinished game
     # try:
-    #     with open("game_data/game_state.txt") as f:
+    #     with open("game_data/previous_game_state.json") as f:
     #         
     # except (FileNotFoundError, json.decoder.JSONDecodeError):
 
-        # load stats
+        # load stats # [ ]: load the stats from "game_data/stats.json"
         # loadStats()
-        
-    window, event = startGame()
-        
-        # if event != sg.WINDOW_CLOSED:
-        #     # save stats
-        #     saveStats()
 
-        #     # show stats
+        # show stats
+        # statsWindow = showStats()
+    window = createGameWindow()
+
+        # [ ]: load next word in the wordList instead of choosing at random
+    with open("words.txt", mode='rt') as f:
+        wordList = f.readlines()
+        for x in range(len(wordList)):
+            wordList[x] = wordList[x].strip("\n").upper()
+
+    window, event, won = startGame(window, wordList)
+        
+        # if won!=None: # if game was finished, save stats and ask to play again
+        #     # save stats then reload the stats window # [ ]: save the stats to "game_data/stats.json"
+        #     statsWindow.close()
+        #     saveStats()
         #     statsWindow = showStats()
 
-        #     # popup after game asking to play again
+        #     # [ ]: popup after game asking to play again
         #     playAgain = True
         #     while(playAgain):
         #         playAgainWindow, response = playAgain()
@@ -355,12 +360,13 @@ def main():
         #             window.close()
         #             statsWindow.close()
         #             playAgainWindow.close()
-        #             window, event = startGame(wordList)
         #             statsWindow = showStats()
+        #             window, event = startGame(wordList)
         #         else:
         #             playAgain = False
-        # else: # if the window was closed, save the game state until the program is executed again
-        #     saveGameState()
+        # else: # if the window was closed and game unfinished, save the game state until the program is executed again
+        #     saveGameState() # [ ]: save an unfinished game
+    # 
 
     # Finish up by removing from the screen
     window.close()
